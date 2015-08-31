@@ -11,16 +11,21 @@ class Provider extends AbstractProvider implements ProviderInterface
     /**
      * {@inheritdoc}
      */
-    protected $scopes = ['https://www.googleapis.com/auth/youtube.readonly'];
+    protected $scopeSeparator = " ";
+    protected $scopes = ["https://www.googleapis.com/auth/youtube.readonly", "https://www.googleapis.com/auth/yt-analytics.readonly", "https://www.googleapis.com/auth/userinfo.email", "https://www.googleapis.com/auth/userinfo.profile"];
 
     /**
      * {@inheritdoc}
      */
     protected function getAuthUrl($state)
     {
-        return $this->buildAuthUrlFromBase(
+        $url = $this->buildAuthUrlFromBase(
             'https://accounts.google.com/o/oauth2/auth', $state
         );
+
+        $url .= '&access_type=offline';
+
+        return $url;
     }
 
     /**
@@ -69,14 +74,37 @@ class Provider extends AbstractProvider implements ProviderInterface
     }
 
     /**
+     * Get the refresh & acceess token for the given code.
+     *
+     * @param  string  $code
+     * @return string
+     */
+    public function getRefreshAndAccessToken($code)
+    {
+        $response = $this->getHttpClient()->post($this->getTokenUrl(), [
+            'headers' => ['Accept' => 'application/json'],
+            'form_params' => $this->getTokenFields($code),
+        ]);
+
+        $tokens = json_decode( $response->getBody(), true );
+        $this->refresh_token = $tokens['refresh_token'];
+
+        return $tokens['access_token'];
+    }
+
+    /**
      * {@inheritdoc}
      */
     public function user()
     {
         $user = $this->mapUserToObject($this->getUserByToken(
-            $token = $this->getAccessToken($this->getCode())
+            $token = $this->getRefreshAndAccessToken($this->getCode())
         ));
+
+        if (isset($this->refresh_token))
+            $user->refresh_token = $this->refresh_token;
 
         return $user->setToken($token);
     }
 }
+
